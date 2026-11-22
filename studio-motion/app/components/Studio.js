@@ -1,6 +1,6 @@
 "use client";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MAX_HTML, followsStudio, htmlPrompt, SAMPLE_HTML, viewportFor } from "@/lib/htmlMotion.mjs";
+import { MAX_HTML, followsStudio, htmlPrompt, viewportFor } from "@/lib/htmlMotion.mjs";
 import { DEFAULT_HTML, DEFAULT_NAME } from "@/lib/defaultMotion.mjs";
 import { canPickFolder, canSaveAs, loadFrame, renderHtml, fileBase, saveAs, writeFile } from "./htmlRender";
 import { CopyButton } from "./ui";
@@ -312,8 +312,7 @@ export default function Studio() {
                 onScroll={(e) => { if (gutterRef.current) gutterRef.current.scrollTop = e.target.scrollTop; }} />
             </div>
             <div className="pane-foot">
-              <button type="button" className="mini" onClick={() => loadCode(DEFAULT_HTML, DEFAULT_NAME, { bg: "code" })}>StockSells</button>
-              <button type="button" className="mini" onClick={() => loadCode(SAMPLE_HTML, "retro-sunset-grid", { bg: "code" })}>Retro</button>
+              <button type="button" className="mini" onClick={() => loadCode(DEFAULT_HTML, DEFAULT_NAME, { bg: "code" })}>Default</button>
               {code && <button type="button" className="mini" onClick={saveHtml}>Simpan</button>}
               {code && <button type="button" className="mini" onClick={() => { setCode(""); setName(""); setErrors([]); }}>Kosongkan</button>}
               <span className="mono muted foot-r"><i className={errors.length ? "dot err" : "dot"} />Ln {caret[0]}, Col {caret[1]} · {fmtSize(new Blob([code]).size)}</span>
