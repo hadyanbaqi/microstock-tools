@@ -158,7 +158,7 @@ export async function saveAs(blob, name) {
   if (!canSaveAs()) { saveBlob(blob, name); return "download"; }
   const ext = (name.match(/\.[a-z0-9]+$/i) || [".mp4"])[0].toLowerCase(), type = blob.type || (ext === ".jpg" ? "image/jpeg" : ext === ".webm" ? "video/webm" : "video/mp4");
   try {
-    const h = await window.showSaveFilePicker({ id: "stockscope-render", suggestedName: name, startIn: "downloads", types: [{ description: ext === ".jpg" ? "Gambar" : "Video", accept: { [type.split(";")[0]]: [ext] } }] });
+    const h = await window.showSaveFilePicker({ id: "studio-motion-render", suggestedName: name, startIn: "downloads", types: [{ description: ext === ".jpg" ? "Gambar" : "Video", accept: { [type.split(";")[0]]: [ext] } }] });
     const w = await h.createWritable(); await w.write(blob); await w.close(); return "saved";
   } catch (e) { if (e?.name === "AbortError") return "cancel"; saveBlob(blob, name); return "download"; }
 }

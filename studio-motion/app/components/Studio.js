@@ -12,16 +12,20 @@ const DURS = [5, 10, 15, 30];
 const SIZES = [["1920x1080", "Full HD · 16:9"], ["1080x1920", "Vertikal · 9:16"], ["1080x1080", "Persegi · 1:1"], ["3840x2160", "4K UHD · stock"]];
 const BITRATES = [[16, "16"], [40, "40"], [100, "100"]];
 const QUICK_COLORS = [["#00FF00", "Green screen"], ["#000000", "Hitam"], ["#FFFFFF", "Putih"], ["#0F172A", "Navy"]];
-const FORMATS = [["mp4", "MP4 · H.264", "Video umum & stock footage"], ["mov", "MOV · ProRes 4444", "Workflow profesional & alpha"]];
+const FORMATS = [["mp4", "MP4 · H.264"], ["mov", "MOV · ProRes 4444"]];
 const WARN = { smil: "Ada animasi SVG SMIL (<animate>): tidak ikut terekam. Ganti dengan CSS @keyframes atau JavaScript." };
-const FEATURES = [
-  ["💻", "Code editor dalam satu tempat", "HTML, CSS, dan JavaScript ditulis dalam satu editor. Nggak perlu pisah file. Kamu juga bisa langsung paste code atau import file HTML yang sudah kamu punya."],
-  ["👀", "Live preview sebelum render", "Lihat animasi berjalan lebih dulu, perbaiki timing-nya, baru render. Hemat waktu, hemat resource."],
-  ["🎞️", "Pengaturan video yang fleksibel", "Durasi bebas, 24 / 25 / 30 / 50 / 60 FPS, resolusi Full HD, vertikal, persegi, 4K atau custom, latar transparan (alpha) atau solid."],
-  ["🎥", "Export kualitas tinggi", "MP4 H.264 untuk video umum dan stock footage. MOV ProRes 4444 untuk workflow profesional dan alpha/transparency."],
-];
-const IDEAS = ["Partikel emas berkilau melayang pelan", "Gradien aurora bergerak halus", "Grid retro synthwave dengan matahari terbenam", "Gelembung sabun transparan naik pelan", "Hujan neon di kota malam", "Gelombang garis minimalis yang mengalir"];
+const IDEAS = ["Partikel emas berkilau", "Gradien aurora halus", "Grid retro synthwave", "Gelembung sabun transparan", "Hujan neon kota malam", "Gelombang garis minimalis"];
 const AI_SITES = [["ChatGPT", "https://chatgpt.com/"], ["Gemini", "https://gemini.google.com/app"], ["Claude", "https://claude.ai/new"]];
+
+function Logo() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 28 28" aria-hidden="true">
+      <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ff9a5c" /><stop offset="1" stopColor="#ff6a2b" /></linearGradient></defs>
+      <rect width="28" height="28" rx="8" fill="url(#lg)" />
+      <path d="M11 8.8v10.4a.8.8 0 0 0 1.2.7l8.2-5.2a.8.8 0 0 0 0-1.4l-8.2-5.2a.8.8 0 0 0-1.2.7Z" fill="#160a04" />
+    </svg>
+  );
+}
 
 const fmtSize = (b) => (b > 1e6 ? `${(b / 1e6).toFixed(1).replace(".", ",")} MB` : `${Math.round(b / 1e3)} KB`);
 const fmtNum = (n) => (n ?? 0).toLocaleString("id-ID");
@@ -30,7 +34,7 @@ const mmss = (s) => (Number.isFinite(s) ? `${String(Math.floor(s / 60)).padStart
 const even = (v, d) => Math.min(4096, Math.max(256, Math.round((Number(v) || d) / 2) * 2));
 
 // ---------- preview: frame-mode page driven by the parent's clock ----------
-const Preview = memo(function Preview({ code, runKey, vw, vh, ow, oh, fps, duration, bg, color, loop, onErrors, onDocSize }) {
+const Preview = memo(function Preview({ code, runKey, vw, vh, ow, oh, fps, duration, bg, color, loop, follows, onErrors, onDocSize }) {
   const frameRef = useRef(null), boxRef = useRef(null), tRef = useRef(0), lastN = useRef(-1);
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(true);
@@ -82,40 +86,37 @@ const Preview = memo(function Preview({ code, runKey, vw, vh, ow, oh, fps, durat
   const jump = (sec) => { const s = Math.min((total - 1) / fps, Math.max(0, sec)); tRef.current = s; setT(s); seek(s, true); };
   const step = (k) => { setPlaying(false); jump((Math.floor(tRef.current * fps + 1e-6) + k) / fps); };
   const n = Math.min(total - 1, Math.floor(t * fps + 1e-6));
-  const scale = Math.min(box[0] / vw, box[1] / vh) || 0.3;
+  const scale = Math.max(0.05, Math.min((box[0] - 40) / vw, (box[1] - 40) / vh)) || 0.3;
   const zoom = Math.round(((scale * vw) / ow) * 100);
 
   return (
-    <div className="ms-card ms-preview">
-      <div className="ms-cardhead">
-        <div><h2 className="ms-h">Pratinjau</h2><p className="ms-sub">Geser timeline untuk cek timing sebelum render</p></div>
-        <span className="ms-tag mono">{ow}×{oh}</span><span className="ms-tag mono">{fps} FPS</span>
-        <button type="button" className={`mini ${grid ? "on" : ""}`} aria-pressed={grid} onClick={() => setGrid((v) => !v)} title="Garis bantu safe area & rule of thirds">⊞ Grid</button>
-        <span className="ms-tag mono" title="Ukuran tampilan dibanding ukuran video">Zoom {zoom}%</span>
+    <div className="stage-col">
+      <div className="stage-bar">
+        <span className="tag mono">{ow}×{oh}</span>
+        <span className="tag mono">{fps} FPS</span>
+        <span className="tag mono" title="Ukuran tampilan dibanding ukuran video">{zoom}%</span>
+        <span className="tag mono" title={follows ? "Kode memakai window.STUDIO: ukuran, durasi dan latar ikut pengaturan" : "Kode tidak memakai window.STUDIO: ukuran, durasi loop dan latar mengikuti kodenya"}>{!code.trim() ? "—" : follows ? "✓ ikut pengaturan" : "ukuran dari kode"}</span>
+        <span className="tag mono grow-gap">{bg === "alpha" ? "Transparan" : bg === "solid" ? color : "Latar kode"}</span>
+        <button type="button" className={`mini ${grid ? "on" : ""}`} aria-pressed={grid} onClick={() => setGrid((v) => !v)} title="Safe area & rule of thirds">Grid</button>
       </div>
-      <div className="ms-viewport" ref={boxRef} style={{ aspectRatio: `${ow} / ${oh}` }}>
+      <div className="ms-viewport" ref={boxRef}>
         <div className={`ms-stage ${bg === "alpha" ? "checker" : ""}`} style={{ width: vw * scale, height: vh * scale }}>
           <iframe ref={frameRef} sandbox="allow-scripts" title="Pratinjau animasi HTML"
             style={{ width: vw, height: vh, transform: `scale(${scale})`, visibility: code.trim() ? "visible" : "hidden" }} />
           {grid && <div className="ms-grid" aria-hidden="true"><i /><span /></div>}
         </div>
-        {!code.trim() && <div className="cve-empty"><b>Belum ada kode animasi</b><span>Tulis ide atau tempel kode HTML.</span></div>}
-        <span className="ms-floating mono">{bg === "alpha" ? "Latar transparan" : bg === "solid" ? `Latar ${color}` : "Latar sesuai kode"}</span>
+        {!code.trim() && <div className="cve-empty"><b>Belum ada animasi</b><span>Tempel kode, import .html, atau pakai Contoh</span></div>}
       </div>
       <div className="ms-transport">
-        <div className="ms-scrub">
-          <span className="mono ms-now">{clock(n / fps)}</span>
-          <input type="range" min={0} max={total - 1} step={1} value={n} aria-label="Timeline frame"
-            onChange={(e) => { setPlaying(false); jump(Number(e.target.value) / fps); }} />
-          <span className="mono muted">{clock(duration)}</span>
-        </div>
-        <div className="ms-row">
-          <button type="button" className="primary" disabled={!code.trim()} onClick={() => setPlaying((p) => !p)}>{playing ? "❚❚ Pause" : "▶ Play"}</button>
-          <button type="button" disabled={!code.trim()} onClick={() => { jump(0); setPlaying(true); }}>↻ Ulang</button>
-          <button type="button" className="mini mono" disabled={!code.trim()} onClick={() => step(-1)} title="Mundur 1 frame">−1F</button>
-          <button type="button" className="mini mono" disabled={!code.trim()} onClick={() => step(1)} title="Maju 1 frame">+1F</button>
-          <span className="ms-frames mono"><span className="muted">Frame</span> <b>{fmtNum(n + 1)}</b> <span className="muted">/ {fmtNum(total)} ·</span> <b className="lime">{Math.round(((n + 1) / total) * 100)}%</b></span>
-        </div>
+        <button type="button" className="primary round" disabled={!code.trim()} onClick={() => setPlaying((p) => !p)} aria-label={playing ? "Pause" : "Play"}>{playing ? "❚❚" : "▶"}</button>
+        <button type="button" className="mini" disabled={!code.trim()} onClick={() => { jump(0); setPlaying(true); }} title="Restart">↻</button>
+        <button type="button" className="mini mono" disabled={!code.trim()} onClick={() => step(-1)} title="Mundur 1 frame">−1F</button>
+        <button type="button" className="mini mono" disabled={!code.trim()} onClick={() => step(1)} title="Maju 1 frame">+1F</button>
+        <span className="mono ms-now">{clock(n / fps)}</span>
+        <input type="range" min={0} max={total - 1} step={1} value={n} aria-label="Timeline frame"
+          onChange={(e) => { setPlaying(false); jump(Number(e.target.value) / fps); }} />
+        <span className="mono muted">{clock(duration)}</span>
+        <span className="mono muted frames">{fmtNum(n + 1)}/{fmtNum(total)}</span>
       </div>
     </div>
   );
@@ -256,52 +257,36 @@ export default function Studio() {
   const codec = mov ? "ProRes 4444" : `H.264 ${mbps} Mbps${alpha ? " + luma matte" : ""}`;
   const sumFormat = mov ? "MOV ProRes 4444" : `MP4 H.264${alpha ? " + matte" : ""}`;
 
+  const tabBtn = (k, l) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>;
+  const group = (title, right, children) => <section className="ins-sec"><div className="ins-title"><span>{title}</span>{right}</div>{children}</section>;
+
   return (
-    <div className="ms">
-      <section className="ms-hero">
-        <div className="ms-hero-main">
-          <div className="ms-kicker"><b>HTML · CSS · JavaScript → video</b><span className="muted mono">render frame demi frame di browser</span></div>
-          <h1 className="page-title">Studio <em>Motion</em></h1>
-          <p className="tagline">Tulis atau tempel kode animasi, lihat pratinjaunya, lalu render jadi <b>MP4</b> atau <b>MOV ProRes 4444</b> untuk stock footage. Belum punya kode? Susun prompt di tab <b>Prompt template</b>, minta ChatGPT, Gemini atau Claude menulisnya, lalu tempel hasilnya di sini.</p>
+    <div className="app">
+      <header className="bar">
+        <span className="brand" aria-label="Studio Motion"><Logo /><span className="brand-word">Studio<span>Motion</span></span></span>
+        <input className="bar-name mono" value={name} onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 20))} maxLength={20} placeholder="nama-file" aria-label="Nama file" />
+        <div className="bar-actions">
+          <input ref={fileRef} type="file" accept=".html,.htm,text/html" hidden onChange={(e) => { importFile(e.target.files[0]); e.target.value = ""; }} />
+          <button type="button" onClick={() => fileRef.current?.click()}>Import .html</button>
+          <button type="button" onClick={paste}>Tempel</button>
+          <button type="button" className="primary" disabled={busy !== null} onClick={render}>{busy !== null ? `Render ${Math.round((busy.p || 0) * 100)}%` : `Render ${mov ? "MOV" : "MP4"}`}</button>
         </div>
-        <div className="ms-hero-side">
-          <div className="ms-flow mono"><b>Tulis / tempel kode</b> → Pratinjau → Render → <b>Unduh</b></div>
-          <div className="btns">
-            <input ref={fileRef} type="file" accept=".html,.htm,text/html" hidden onChange={(e) => { importFile(e.target.files[0]); e.target.value = ""; }} />
-            <button type="button" onClick={() => fileRef.current?.click()}>Import .html</button>
-            <button type="button" onClick={paste}>Tempel kode</button>
-            <button type="button" className="primary" disabled={busy !== null} onClick={render}>Render video →</button>
-          </div>
-        </div>
-      </section>
+      </header>
 
-      <section className="ms-features" aria-label="Fitur">
-        {FEATURES.map(([e, t, d]) => <div key={t} className="ms-feature"><span className="ms-feature-ico" aria-hidden="true">{e}</span><b>{t}</b><p>{d}</p></div>)}
-      </section>
-
-      <section className="ms-work">
-        <div className={`ms-card ms-editor ${tab === "code" ? "fit" : ""}`}>
-          <div className="ms-cardhead">
-            <div className="seg" role="tablist" aria-label="Editor">
-              {[["code", "Kode HTML"], ["template", "Prompt template"]].map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>)}
-            </div>
+      <div className="app-body">
+        <aside className="pane pane-left">
+          <div className="pane-head">
+            <div className="seg" role="tablist" aria-label="Editor">{tabBtn("code", "Kode")}{tabBtn("template", "Prompt")}</div>
             {tab === "code" && <>
               <label className="mcheck"><input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> Auto</label>
-              <button type="button" className="mini primary" disabled={!code.trim()} onClick={run} title="Ctrl/Cmd + Enter">↻ Jalankan</button>
+              <button type="button" className="mini" disabled={!code.trim()} onClick={run} title="Ctrl/Cmd + Enter">↻ Jalankan</button>
             </>}
           </div>
 
           {tab === "code" && <>
-            <div className="ms-toolbar">
-              <button type="button" className="mini" onClick={() => fileRef.current?.click()}>Import .html</button>
-              <button type="button" className="mini" onClick={paste}>Tempel dari clipboard</button>
-              <button type="button" className="mini" onClick={() => loadCode(SAMPLE_HTML, "retro-sunset-grid", { bg: "code" })}>Contoh</button>
-              {code && <button type="button" className="mini" onClick={saveHtml}>Simpan .html</button>}
-              {code && <button type="button" className="mini" onClick={() => { setCode(""); setName(""); setErrors([]); }}>Kosongkan</button>}
-            </div>
             <div className="cve-code ms-code">
               <pre ref={gutterRef} aria-hidden="true">{Array.from({ length: lines }, (_, i) => i + 1).join("\n")}</pre>
-              <textarea ref={taRef} spellCheck={false} value={code} aria-label="Kode HTML animasi" placeholder="Tulis atau tempel kode HTML lengkap (mulai dari <!DOCTYPE html>), dengan <style> dan <script> di dalamnya…"
+              <textarea ref={taRef} spellCheck={false} value={code} aria-label="Kode HTML animasi" placeholder={"<!DOCTYPE html>\n<style>…</style>\n<script>…</script>"}
                 onChange={(e) => setCode(e.target.value)} onSelect={onCaret} onKeyUp={onCaret} onClick={onCaret}
                 onKeyDown={(e) => {
                   if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); run(); }
@@ -311,117 +296,93 @@ export default function Studio() {
                 }}
                 onScroll={(e) => { if (gutterRef.current) gutterRef.current.scrollTop = e.target.scrollTop; }} />
             </div>
-            <div className="ms-status mono">
-              <span><i className={errors.length ? "dot err" : "dot"} />{errors.length ? "Ada error di HTML" : code.trim() ? (follows ? "Mengikuti pengaturan Studio" : "Pratinjau terkunci ke frame") : "Siap"}</span>
-              <span>Ln {caret[0]}, Col {caret[1]} · {fmtSize(new Blob([code]).size)}</span>
+            <div className="pane-foot">
+              <button type="button" className="mini" onClick={() => loadCode(SAMPLE_HTML, "retro-sunset-grid", { bg: "code" })}>Contoh</button>
+              {code && <button type="button" className="mini" onClick={saveHtml}>Simpan</button>}
+              {code && <button type="button" className="mini" onClick={() => { setCode(""); setName(""); setErrors([]); }}>Kosongkan</button>}
+              <span className="mono muted foot-r"><i className={errors.length ? "dot err" : "dot"} />Ln {caret[0]}, Col {caret[1]} · {fmtSize(new Blob([code]).size)}</span>
             </div>
           </>}
 
-          {tab === "template" && <div className="cve-idea-box ms-template">
-            <ol className="ms-steps">
-              <li><b>Tentukan motion</b> yang mau dibuat.</li>
-              <li><b>Salin prompt</b> lalu tempel di ChatGPT, Gemini atau Claude.</li>
-              <li><b>Tempel kode</b> hasilnya di tab Kode HTML. Pratinjau langsung jalan.</li>
-            </ol>
-            <label className="mparam"><span>Motion apa yang mau dibuat?</span>
-              <textarea rows={4} value={idea} onChange={(e) => setIdea(e.target.value)} placeholder="Contoh: partikel emas berkilau melayang pelan di latar hitam, cocok untuk overlay perayaan" /></label>
-            <div className="ms-pills ideas" role="group" aria-label="Contoh ide">{IDEAS.map((x) => <button key={x} type="button" onClick={() => setIdea(x)}>{x}</button>)}</div>
-            <div className="ms-two">
-              <label className="mparam"><span>Gaya / suasana (opsional)</span><input value={style} onChange={(e) => setStyle(e.target.value)} placeholder="minimalis, mewah, retro…" /></label>
-              <label className="mparam"><span>Warna (opsional)</span><input value={colors} onChange={(e) => setColors(e.target.value)} placeholder="emas, hitam, biru neon…" /></label>
+          {tab === "template" && <div className="tpl">
+            <label className="mparam"><span>Motion yang mau dibuat</span>
+              <textarea rows={4} value={idea} onChange={(e) => setIdea(e.target.value)} placeholder="mis. partikel emas berkilau melayang pelan di latar hitam" /></label>
+            <div className="chips" role="group" aria-label="Contoh ide">{IDEAS.map((x) => <button key={x} type="button" className="mini" onClick={() => setIdea(x)}>{x}</button>)}</div>
+            <div className="two">
+              <label className="mparam"><span>Gaya</span><input value={style} onChange={(e) => setStyle(e.target.value)} placeholder="minimalis, mewah…" /></label>
+              <label className="mparam"><span>Warna</span><input value={colors} onChange={(e) => setColors(e.target.value)} placeholder="emas, hitam…" /></label>
             </div>
-            <label className="mparam"><span>Teks di dalam animasi (opsional)</span><input value={text} onChange={(e) => setText(e.target.value)} placeholder="kosongkan kalau tanpa teks" /></label>
-            <p className="hint">Rasio {aspect}, loop {duration} dtk dan latar {alpha ? "transparan" : bg === "solid" ? color : "sesuai kode"} diambil dari Pengaturan video.</p>
-            <div className="btns" style={{ marginTop: 4 }}>
+            <label className="mparam"><span>Teks di animasi</span><input value={text} onChange={(e) => setText(e.target.value)} placeholder="kosong = tanpa teks" /></label>
+            <div className="tpl-meta mono">{aspect} · {duration} dtk · {alpha ? "transparan" : bg === "solid" ? color : "latar bebas"}</div>
+            <div className="btns">
               <CopyButton className="primary" label="Salin prompt" text={prompt} />
-              {AI_SITES.map(([l, url]) => <button key={l} type="button" onClick={() => { navigator.clipboard?.writeText(prompt).catch(() => {}); window.open(url, "_blank", "noopener"); }}>Salin & buka {l}</button>)}
-              <button type="button" onClick={() => setTab("code")}>Sudah ada kodenya →</button>
+              {AI_SITES.map(([l, url]) => <button key={l} type="button" onClick={() => { navigator.clipboard?.writeText(prompt).catch(() => {}); window.open(url, "_blank", "noopener"); }}>{l} ↗</button>)}
             </div>
-            <button type="button" className="linkish" onClick={() => setPromptOpen((o) => !o)}>{promptOpen ? "Sembunyikan prompt" : "Lihat prompt lengkap"}</button>
-            {promptOpen && <textarea className="ms-promptview mono" readOnly rows={14} value={prompt} aria-label="Prompt lengkap" onFocus={(e) => e.target.select()} />}
+            <div className="btns">
+              <button type="button" className="linkish" onClick={() => setPromptOpen((o) => !o)}>{promptOpen ? "Sembunyikan prompt" : "Lihat prompt"}</button>
+              <button type="button" className="linkish" onClick={() => setTab("code")}>Tempel hasil di Kode →</button>
+            </div>
+            {promptOpen && <textarea className="ms-promptview mono" readOnly rows={12} value={prompt} aria-label="Prompt lengkap" onFocus={(e) => e.target.select()} />}
           </div>}
           {err && <div className="notice err">{err}</div>}
-        </div>
+        </aside>
 
-        <div className="ms-mid">
-          <Preview code={code} runKey={runKey} vw={vw} vh={vh} ow={ow} oh={oh} fps={fps} duration={duration} bg={bg} color={color} loop={loop}
+        <main className="pane pane-center">
+          <Preview code={code} runKey={runKey} vw={vw} vh={vh} ow={ow} oh={oh} fps={fps} duration={duration} bg={bg} color={color} loop={loop} follows={follows}
             onErrors={setErrors} onDocSize={setDocSize} />
-          {errors.map((m, i) => <div key={i} className="notice err">Error di HTML: {m}</div>)}
-          {code.trim() && (follows
-            ? <div className="notice okbox ms-follow">✓ Kode ini mengikuti pengaturan Studio: ukuran, durasi loop dan latar berubah sesuai Pengaturan video.</div>
-            : <div className="notice ms-follow">Kode ini tidak membaca pengaturan Studio, jadi ukuran, durasi loop dan latar mengikuti angka di dalam kodenya. FPS dan resolusi tetap berlaku.
-                Untuk kode baru, pakai tab <b>Prompt template</b>: aturannya sudah meminta kode memakai <code>window.STUDIO</code>.</div>)}
-          {sizeMismatch && <div className="notice">Ukuran HTML {docSize[0]}×{docSize[1]} lebih besar dari kanvas {vw}×{vh}, jadi sebagian akan terpotong. Pakai width/height 100% atau {vw}×{vh} px.</div>}
-        </div>
+          {(errors.length > 0 || sizeMismatch) && <div className="stage-notes">
+            {errors.map((m, i) => <div key={i} className="notice err">Error: {m}</div>)}
+            {sizeMismatch && <div className="notice">HTML {docSize[0]}×{docSize[1]} lebih besar dari kanvas {vw}×{vh}: sebagian terpotong.</div>}
+          </div>}
+        </main>
 
-        <div className="ms-card ms-settings">
-          <div className="ms-cardhead">
-            <div><h2 className="ms-h">Pengaturan video</h2><p className="ms-sub">Untuk kebutuhan microstock</p></div>
-            <label className="mcheck"><input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} /> Loop</label>
-          </div>
-          <div className="ms-settings-body">
-            <div className="ms-group">
-              <div className="ms-label">Durasi & FPS <span className="ms-tag mono lime">{fmtNum(total)} frame</span></div>
-              <div className="ms-two">
-                <label className="ms-box"><span>Durasi (detik)</span><input type="number" min={1} max={120} value={duration} onChange={(e) => setDuration(Math.min(120, Math.max(1, Math.round(Number(e.target.value)) || 10)))} /></label>
-                <div className="ms-box"><span>Cepat</span><div className="ms-pills">{DURS.map((d) => <button key={d} type="button" className={duration === d ? "on" : ""} onClick={() => setDuration(d)}>{d}s</button>)}</div></div>
-              </div>
-              <div className="ms-pills wide" role="group" aria-label="FPS">{FPS.map((f) => <button key={f} type="button" className={fps === f ? "on" : ""} aria-pressed={fps === f} onClick={() => setFps(f)}>{f}</button>)}</div>
-            </div>
-
-            <div className="ms-group">
-              <div className="ms-label">Resolusi</div>
+        <aside className="pane pane-right">
+          <div className="ins">
+            {group("Format", null,
+              <div className="seg full" role="group" aria-label="Format export">
+                {FORMATS.map(([k, l]) => <button key={k} type="button" className={format === k ? "on" : ""} aria-pressed={format === k} onClick={() => setFormat(k)}>{l}</button>)}
+              </div>)}
+            {group("Resolusi", null, <>
               <div className="ms-opts">
                 {SIZES.map(([k, l]) => <button key={k} type="button" className={sizeKey === k ? "on" : ""} aria-pressed={sizeKey === k} onClick={() => setSizeKey(k)}><b className="mono">{k.replace("x", "×")}</b><span>{l}</span></button>)}
               </div>
               <div className={`ms-custom ${sizeKey === "custom" ? "on" : ""}`}>
-                <button type="button" className="linkish" onClick={() => setSizeKey("custom")}>Custom:</button>
+                <button type="button" className="linkish" onClick={() => setSizeKey("custom")}>Custom</button>
                 <input type="number" aria-label="Lebar" value={cw} min={256} max={4096} onFocus={() => setSizeKey("custom")} onChange={(e) => setCw(Number(e.target.value))} onBlur={() => setCw(even(cw, 1920))} />
                 <span className="muted">×</span>
                 <input type="number" aria-label="Tinggi" value={ch} min={256} max={4096} onFocus={() => setSizeKey("custom")} onChange={(e) => setCh(Number(e.target.value))} onBlur={() => setCh(even(ch, 1080))} />
               </div>
-            </div>
-
-            <div className="ms-group">
-              <div className="ms-label">Background</div>
-              <div className="ms-opts three">
-                <button type="button" className={bg === "code" ? "on" : ""} onClick={() => setBg("code")}><b>Sesuai kode</b><span>Latar dari HTML</span></button>
-                <button type="button" className={alpha ? "on" : ""} onClick={() => setBg("alpha")}><b>Transparent</b><span>Alpha</span></button>
-                <button type="button" className={bg === "solid" ? "on" : ""} onClick={() => setBg("solid")}><b>Solid</b><span>Warna pilihan</span></button>
+            </>)}
+            {group("Durasi", <span className="tag mono lime">{fmtNum(total)} frame</span>, <>
+              <div className="dur">
+                <label className="ms-box"><input type="number" aria-label="Durasi (detik)" min={1} max={120} value={duration} onChange={(e) => setDuration(Math.min(120, Math.max(1, Math.round(Number(e.target.value)) || 10)))} /><span>detik</span></label>
+                <div className="ms-pills">{DURS.map((d) => <button key={d} type="button" className={duration === d ? "on" : ""} onClick={() => setDuration(d)}>{d}</button>)}</div>
+              </div>
+            </>)}
+            {group("FPS", null, <div className="ms-pills wide" role="group" aria-label="FPS">{FPS.map((f) => <button key={f} type="button" className={fps === f ? "on" : ""} aria-pressed={fps === f} onClick={() => setFps(f)}>{f}</button>)}</div>)}
+            {group("Background", null, <>
+              <div className="seg full" role="group" aria-label="Background">
+                <button type="button" className={bg === "code" ? "on" : ""} onClick={() => setBg("code")}>Kode</button>
+                <button type="button" className={alpha ? "on" : ""} onClick={() => setBg("alpha")}>Transparan</button>
+                <button type="button" className={bg === "solid" ? "on" : ""} onClick={() => setBg("solid")}>Solid</button>
               </div>
               {bg === "solid" && <div className="ms-colors">
                 <input type="color" aria-label="Warna latar" value={color} onChange={(e) => setColor(e.target.value.toUpperCase())} />
                 <input className="mono" aria-label="Kode warna" value={color} maxLength={7} onChange={(e) => /^#[0-9a-f]{0,6}$/i.test(e.target.value) && setColor(e.target.value.toUpperCase())} />
-                {QUICK_COLORS.map(([c, l]) => <button key={c} type="button" className="mini" title={l} onClick={() => setColor(c)}><i style={{ background: c }} />{l}</button>)}
+                {QUICK_COLORS.map(([c, l]) => <button key={c} type="button" className="swatch" title={l} aria-label={l} style={{ background: c }} onClick={() => setColor(c)} />)}
               </div>}
-            </div>
-
-            <div className="ms-group">
-              <div className="ms-label">Format export</div>
-              <div className="ms-opts">
-                {FORMATS.map(([k, l, d]) => <button key={k} type="button" className={format === k ? "on" : ""} aria-pressed={format === k} onClick={() => setFormat(k)}><b>{l}</b><span>{d}</span></button>)}
-              </div>
-              {mov && <p className="hint" style={{ margin: 0 }}>≈ {fmtNum(estMb)} MB, perkiraan render ± {mmss(estSec)} (ProRes dibuat di browser, lebih lambat dari MP4).{estMb > 1500 ? " File sebesar ini bisa gagal di browser: pendekkan durasi atau turunkan resolusi." : ""}</p>}
-              {!mov && alpha && <p className="hint" style={{ margin: 0 }}>MP4 tidak mendukung alpha: hasilnya video di atas hitam + file luma matte. Pilih MOV ProRes 4444 untuk transparansi asli.</p>}
-            </div>
-
-            {!mov && <div className="ms-group">
-              <div className="ms-label">Bitrate (Mbps)</div>
-              <div className="ms-pills wide">{BITRATES.map(([v, l]) => <button key={v} type="button" className={mbps === v ? "on" : ""} onClick={() => setMbps(v)}>{l}</button>)}</div>
-            </div>}
-
-            <label className="ms-group ms-label-input"><span className="ms-label">Nama file</span>
-              <input value={name} onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 20))} maxLength={20} placeholder="mis. gold-particles" />
-              <span className="hint" style={{ margin: 0 }}>Maks 20 huruf, supaya “-matte.mp4” tetap ≤30 karakter.</span>
-            </label>
+              {!mov && alpha && <p className="note">MP4 tanpa alpha: hasil video + file matte. Pakai MOV untuk alpha asli.</p>}
+            </>)}
+            {!mov && group("Bitrate", <span className="muted mono">Mbps</span>, <div className="ms-pills wide">{BITRATES.map(([v, l]) => <button key={v} type="button" className={mbps === v ? "on" : ""} onClick={() => setMbps(v)}>{l}</button>)}</div>)}
+            <label className="mcheck loopchk"><input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} /> Loop pratinjau</label>
           </div>
-          <div className="ms-cta">
-            <button type="button" className="primary" disabled={busy !== null} onClick={render}>{busy !== null ? `Merender… ${Math.round((busy.p || 0) * 100)}%` : "Render frame demi frame →"}</button>
-            <div className="ms-cta-sum mono"><span>{ow}×{oh} · {fps} FPS · {fmtNum(total)}F</span><b className="lime">{sumFormat}</b></div>
+          <div className="ins-foot">
+            <div className="sum mono"><span>{ow}×{oh} · {fps} FPS · {fmtNum(total)}F</span><b className="lime">{sumFormat}</b></div>
+            {mov && <div className={`note mono ${estMb > 1500 ? "warn" : ""}`}>≈ {fmtNum(estMb)} MB · render ±{mmss(estSec)}{estMb > 1500 ? " · terlalu besar untuk browser" : ""}</div>}
             {files.length > 0 && busy === null && <button type="button" className="linkish" onClick={() => setDialog(true)}>Lihat hasil render terakhir</button>}
           </div>
-        </div>
-      </section>
+        </aside>
+      </div>
 
       <iframe ref={renderRef} sandbox="allow-scripts" title="Perekam" aria-hidden="true" tabIndex={-1} className="cve-offscreen" style={{ width: vw, height: vh }} />
       {dialog && <RenderDialog busy={busy} files={files} error={renderErr} warns={warns} loopRes={loopRes} info={{ ow, oh, fps, total, codec, format: sumFormat, duration }}
