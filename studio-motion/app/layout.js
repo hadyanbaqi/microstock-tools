@@ -1,8 +1,8 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "StockScope — Riset Microstock",
-  description: "Riset niche, keyword, dan kompetitor Adobe Stock untuk kontributor microstock.",
+  title: "Studio Motion",
+  description: "Editor HTML animasi → video loop untuk microstock.",
 };
 
 export default function RootLayout({ children }) {
