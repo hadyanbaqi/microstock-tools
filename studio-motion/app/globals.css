@@ -155,13 +155,55 @@ button.round { width: 34px; height: 34px; padding: 0; border-radius: 50%; font-s
 .ins-foot { padding: 12px 14px; border-top: 1px solid var(--line); background: #0e0e10; display: grid; gap: 6px; }
 .sum { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--gray); }
 
+/* ---------- responsive ---------- */
+/* small laptops: slimmer side panes, compact editor header */
+@media (max-width: 1360px) {
+  .app-body { grid-template-columns: minmax(300px, 28%) minmax(0, 1fr) 272px; }
+  .pane-head { gap: 6px; padding: 10px; }
+  .pane-head .mcheck { font-size: 12px; }
+  .pane-head .seg button { padding: 6px 10px; }
+  .foot-r { display: none; }
+  .seg.full button { white-space: nowrap; font-size: 11.5px; padding: 6px 2px; }
+}
+/* tablets: preview on top, code and inspector side by side, page scrolls */
 @media (max-width: 1100px) {
   .app { height: auto; min-height: 100vh; grid-template-rows: 52px auto; }
-  .app-body { grid-template-columns: minmax(0, 1fr); }
-  .pane-center { order: -1; min-height: 60vh; }
-  .pane-left { min-height: 460px; border-right: 0; border-top: 1px solid var(--line); }
-  .pane-right { border-left: 0; border-top: 1px solid var(--line); }
-  .bar-name { display: none; }
+  .app-body { grid-template-columns: minmax(0, 1fr) 280px; grid-template-areas: "center center" "left right"; }
+  .pane-center { grid-area: center; height: min(62vh, 640px); min-height: 340px; border-bottom: 1px solid var(--line); }
+  .pane-left { grid-area: left; height: 640px; border-right: 1px solid var(--line); }
+  .pane-right { grid-area: right; height: 640px; }
+  .bar-name { width: 150px; }
+}
+/* phones: one column, fixed-height editor so the page stays short */
+@media (max-width: 760px) {
+  .bar { gap: 8px; padding: 0 10px; }
+  .brand-word, .bar-name { display: none; }
+  .bar-actions { gap: 6px; }
+  .bar-actions button { padding: 7px 10px; font-size: 12.5px; }
+  .app-body { grid-template-columns: minmax(0, 1fr); grid-template-areas: "center" "left" "right"; }
+  .pane-center { height: auto; min-height: 0; padding: 10px; }
+  .ms-viewport { flex: none; height: min(56vw, 46vh); min-height: 200px; }
+  .pane-left { height: 70vh; min-height: 420px; border-right: 0; }
+  .pane-right { height: auto; border-left: 0; border-top: 1px solid var(--line); }
+  .ins { overflow: visible; }
+  .stage-bar .tag:nth-child(3), .stage-bar .tag:nth-child(4) { display: none; }
+  .ms-transport { gap: 6px; padding: 8px; flex-wrap: wrap; }
+  .ms-transport input[type="range"] { order: 10; flex: 1 0 100%; }
+  .ms-transport .frames { margin-left: auto; min-width: 0; }
+  .ms-transport .ms-now + input + .muted { display: none; }
+  .cve-code pre, .cve-code textarea { font-size: 12px; }
+  .cve-code pre { min-width: 36px; padding: 12px 8px; }
+  .tpl .btns { flex-wrap: wrap; }
+  .modal { padding: 16px; }
+  .ms-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  input, textarea, select { font-size: 16px; }  /* stops iOS zooming into fields */
+  .cve-code textarea, .ms-promptview { font-size: 12px; }
+}
+/* phone landscape: short screens */
+@media (max-height: 500px) and (max-width: 1100px) {
+  .ms-viewport { height: 62vh; min-height: 160px; }
+  .pane-center { height: auto; }
+  .pane-left, .pane-right { height: 560px; min-height: 0; }
 }
 
 /* render dialog */
