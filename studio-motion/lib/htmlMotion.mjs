@@ -477,3 +477,87 @@ export const SAMPLE_HTML = `<!DOCTYPE html>
 </script>
 </body>
 </html>`;
+
+// ---------- JavaScript-only mode ----------
+// The AI only writes the drawing code (a short script that defines render(u)); the Studio wraps it into the full page.
+// That saves the model the HTML/canvas/loop boilerplate (fewer output tokens). Full HTML documents still work as before.
+export const isFullHtml = (code) => /<!doctype|<html[\s>]|<body[\s>]|<canvas[\s>]|<script[\s>]/i.test(String(code || ""));
+
+// Chat replies often come in a ```js fence: keep only the code.
+export function stripFence(t) {
+  const s = String(t || "").trim(), m = s.match(/```[a-z]*\s*\n([\s\S]*?)\n?```/i);
+  return m ? m[1] : s.replace(/^```[a-z]*\s*\n?/i, "").replace(/\n?```\s*$/, "");
+}
+
+const SHELL_HEAD = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Studio Motion</title>
+<style>html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; } canvas { display: block; }</style>
+</head><body><canvas id="canvas"></canvas><script>
+(function () {
+  const S = window.STUDIO || { width: 1920, height: 1080, duration: 10, fps: 30, background: "code", transparent: false, u: (ms) => ((ms ?? performance.now()) / 1000 / 10) % 1 };
+  const W = S.width, H = S.height, CX = W / 2, CY = H / 2, UNIT = Math.min(W, H), TWO_PI = Math.PI * 2;
+  const canvas = document.getElementById("canvas"); canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  let seed = 1234;
+  const rand = () => { seed = (seed + 0x6d2b79f5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v), lerp = (a, b, t) => a + (b - a) * t, frac = (x) => x - Math.floor(x);
+  const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  const makeLayer = (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
+  const sprite = (w, h, fn) => { const c = makeLayer(w, h); fn(c.getContext("2d"), w, h); return c; };
+  const glow = (r, g, b) => sprite(128, 128, (g2) => { const gr = g2.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, "rgba(" + r + "," + g + "," + b + ",1)"); gr.addColorStop(0.35, "rgba(" + r + "," + g + "," + b + ",0.4)"); gr.addColorStop(1, "rgba(" + r + "," + g + "," + b + ",0)");
+    g2.fillStyle = gr; g2.fillRect(0, 0, 128, 128); });
+  const render = (function () {
+`;
+const SHELL_TAIL = `
+    return typeof render === "function" ? render : null;
+  })();
+  if (!render) throw new Error("Kode belum punya function render(u)");
+  function step(ms) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; ctx.clearRect(0, 0, W, H);
+    render(S.u(ms));
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+  }
+  step(0);
+  (function tick(ms) { step(ms); requestAnimationFrame(tick); })(performance.now());
+})();
+</script></body></html>`;
+
+// What the preview and the render run: a full HTML document as it is, a bare script wrapped in the shell.
+export function toHtml(code) {
+  const c = stripFence(code);
+  if (!c.trim()) return "";
+  if (isFullHtml(c)) return c;
+  return SHELL_HEAD + c.replace(/<\/script/gi, "<\\/script") + SHELL_TAIL;
+}
+
+// The short prompt for the script mode: the AI returns only JavaScript.
+export function scriptPrompt({ idea = "", aspect = "16:9", duration = 10, background = "code" } = {}) {
+  return `You are a world-class Creative Coder & Motion Graphics Engineer.
+Write ONLY the JavaScript of a seamless stock-video loop (Adobe Stock / Shutterstock). Studio Motion already provides the HTML page, the canvas and the render loop, so do NOT output HTML, <script> tags, markdown or explanations: raw JavaScript only, nothing before or after it.
+
+PROVIDED GLOBALS (use them, do not redeclare):
+- ctx: 2D context of a full-frame canvas. W, H (pixels), CX, CY (centre), UNIT = Math.min(W, H), TWO_PI.
+- S: studio settings; S.background is "code", "transparent" or "#rrggbb".
+- rand(): seeded random 0..1 (setup only, never Math.random()).
+- makeLayer(w, h): offscreen canvas. sprite(w, h, fn): offscreen canvas painted once by fn(g2d).
+- glow(r, g, b): soft radial glow sprite (128px canvas) to draw with ctx.drawImage.
+- clamp(v, a, b), lerp(a, b, t), smooth(a, b, x), frac(x).
+
+YOU MUST DEFINE function render(u). It is called every frame with the loop position u in 0..1 (the canvas is already cleared, globalAlpha is 1). Code outside render() runs once as setup.
+
+RULES:
+1. Size-independent: derive every position and size from W, H and UNIT (it must work in 16:9, 9:16, 1:1 and custom sizes).
+2. Seamless loop: compute everything from u in closed form. Periodic motion uses a WHOLE number of cycles per loop: Math.sin(u * TWO_PI * n), frac(u * n + offset) with n an integer. No cumulative updates (x += vx), no state carried between frames.
+3. Background: ${backgroundRule(background)}
+4. Performance: never use ctx.shadowBlur, shadowColor or ctx.filter. Pre-render static layers and glows once in setup (sprite, glow, makeLayer) and drawImage them per frame. Max 60 particles or sprites. No getImageData. No new objects, arrays, canvases or gradients inside render(). Use setTransform and globalAlpha instead of save()/restore() in loops.
+5. Safe for stock: no text, logos, brand names, people or famous characters. Rich, smooth, professional microstock polish.
+6. No external resources, no Math.random(), no Date, no setTimeout/setInterval.
+
+SPECIFICATIONS:
+- Ratio: ${aspect}
+- Loop length: ${duration} seconds
+- Subject: ${idea || "choose a concept that sells well as stock footage"}
+
+Output the complete JavaScript now, no omissions, no placeholders.`;
+}

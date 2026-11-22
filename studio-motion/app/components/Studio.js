@@ -1,7 +1,7 @@
 "use client";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MAX_HTML, followsStudio, htmlPrompt, viewportFor } from "@/lib/htmlMotion.mjs";
-import { DEFAULT_HTML, DEFAULT_NAME } from "@/lib/defaultMotion.mjs";
+import { MAX_HTML, followsStudio, scriptPrompt, stripFence, toHtml, viewportFor } from "@/lib/htmlMotion.mjs";
+import { DEFAULT_CODE, DEFAULT_NAME } from "@/lib/defaultMotion.mjs";
 import { canPickFolder, canSaveAs, loadFrame, renderHtml, fileBase, saveAs, writeFile } from "./htmlRender";
 import { CopyButton } from "./ui";
 
@@ -104,7 +104,7 @@ const Preview = memo(function Preview({ code, runKey, vw, vh, ow, oh, fps, durat
             style={{ width: vw, height: vh, transform: `scale(${scale})`, visibility: code.trim() ? "visible" : "hidden" }} />
           {grid && <div className="ms-grid" aria-hidden="true"><i /><span /></div>}
         </div>
-        {!code.trim() && <div className="cve-empty"><b>Belum ada animasi</b><span>Tempel kode atau import .html</span></div>}
+        {!code.trim() && <div className="cve-empty"><b>Belum ada animasi</b><span>Tempel kode (JavaScript atau HTML)</span></div>}
       </div>
       <div className="ms-transport">
         <button type="button" className="primary round" disabled={!code.trim()} onClick={() => setPlaying((p) => !p)} aria-label={playing ? "Pause" : "Play"}>{playing ? "❚❚" : "▶"}</button>
@@ -169,7 +169,7 @@ function RenderDialog({ busy, files, error, warns, loopRes, info, onCancel, onCl
 }
 
 export default function Studio() {
-  const [code, setCode] = useState(DEFAULT_HTML);
+  const [code, setCode] = useState(DEFAULT_CODE);
   const [name, setName] = useState(DEFAULT_NAME);
   const [tab, setTab] = useState("code");
   const [sizeKey, setSizeKey] = useState("1920x1080");
@@ -201,6 +201,7 @@ export default function Studio() {
   const total = Math.max(1, Math.round(fps * duration));
   const lines = useMemo(() => code.split("\n").length, [code]);
   const alpha = bg === "alpha", mov = format === "mov";
+  const html = useMemo(() => toHtml(code), [code]);   // JavaScript-only code is wrapped into a page; full HTML is used as it is
   const run = () => setRunKey((k) => k + 1);
   // Auto run 0.8 s after typing stops.
   useEffect(() => { if (!auto) return; const t = setTimeout(run, 800); return () => clearTimeout(t); }, [code, auto]);
@@ -220,20 +221,20 @@ export default function Studio() {
     const fr = new FileReader(); fr.onload = () => loadCode(String(fr.result), file.name.replace(/\.html?$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 20));
     fr.onerror = () => setErr("File tidak bisa dibaca."); fr.readAsText(file);
   }
-  function saveHtml() { const a = document.createElement("a"), url = URL.createObjectURL(new Blob([code], { type: "text/html" })); a.href = url; a.download = `${fileBase(name)}.html`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 30000); }
+  function saveHtml() { const a = document.createElement("a"), url = URL.createObjectURL(new Blob([html], { type: "text/html" })); a.href = url; a.download = `${fileBase(name)}.html`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 30000); }
 
   const aspect = ow === oh ? "1:1" : ow > oh ? "16:9" : "9:16";
   const background = alpha ? "alpha" : bg === "solid" ? color : "code";
-  const prompt = useMemo(() => htmlPrompt({ idea: idea.trim() || "(TULIS MOTION YANG KAMU MAU DI SINI)", aspect, duration, background }), [idea, aspect, duration, background]);
+  const prompt = useMemo(() => scriptPrompt({ idea: idea.trim() || "(TULIS MOTION YANG KAMU MAU DI SINI)", aspect, duration, background }), [idea, aspect, duration, background]);
 
   async function render() {
     if (!code.trim()) { setErr("Belum ada kode HTML. Tempel kode, import file, atau buat dari Prompt template."); setTab("code"); return; }
-    if (code.length > MAX_HTML) { setErr(`HTML terlalu besar (maks ${Math.round(MAX_HTML / 1000)} KB).`); return; }
+    if (html.length > MAX_HTML) { setErr(`Kode terlalu besar (maks ${Math.round(MAX_HTML / 1000)} KB).`); return; }
     setErr(""); setWarns([]); setRenderErr(""); setLoopRes(null);
     setFiles((fs) => { fs.forEach((f) => URL.revokeObjectURL(f.url)); return []; });
     const ac = new AbortController(); abortRef.current = ac; setBusy({ p: 0, n: 0, elapsed: 0 }); setDialog(true);
     try {
-      const out = await renderHtml({ html: code, frame: renderRef.current, size: { vw, vh, ow, oh }, bg: background, fps, duration, mbps, format, signal: ac.signal, onProgress: setBusy, onWarn: setWarns });
+      const out = await renderHtml({ html, frame: renderRef.current, size: { vw, vh, ow, oh }, bg: background, fps, duration, mbps, format, signal: ac.signal, onProgress: setBusy, onWarn: setWarns });
       setLoopRes(out.loop ? { ...out.loop, fast: out.fast } : null);
       const base = fileBase(name), list = [{ name: `${base}.${out.ext}`, blob: out.video }];
       if (out.matte) list.push({ name: `${base}-matte.${out.ext}`, blob: out.matte });
@@ -246,7 +247,7 @@ export default function Studio() {
 
   const onCaret = (e) => { const t = e.target, before = t.value.slice(0, t.selectionStart).split("\n"); setCaret([before.length, before[before.length - 1].length + 1]); };
   const sizeMismatch = docSize && (docSize[0] > vw + 2 || docSize[1] > vh + 2);
-  const follows = useMemo(() => followsStudio(code), [code]);
+  const follows = useMemo(() => followsStudio(html), [html]);
   const px = (ow * oh) / 2073600;
   const estMb = Math.round(px * (fps / 30) * 19 * duration); // ProRes 4444 ≈ 150 Mbps at 1080p30
   const estSec = Math.round(total * 0.3 * px); // ffmpeg.wasm ≈ 0.3 s per 1080p frame
@@ -282,7 +283,7 @@ export default function Studio() {
           {tab === "code" && <>
             <div className="cve-code ms-code">
               <pre ref={gutterRef} aria-hidden="true">{Array.from({ length: lines }, (_, i) => i + 1).join("\n")}</pre>
-              <textarea ref={taRef} spellCheck={false} value={code} aria-label="Kode HTML animasi" placeholder={"<!DOCTYPE html>\n<style>…</style>\n<script>…</script>"}
+              <textarea ref={taRef} spellCheck={false} value={code} aria-label="Kode animasi" placeholder={"// Tempel JavaScript dari AI di sini (atau HTML lengkap)\nfunction render(u) {\n  \n}"}
                 onChange={(e) => setCode(e.target.value)} onSelect={onCaret} onKeyUp={onCaret} onClick={onCaret}
                 onKeyDown={(e) => {
                   if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); run(); }
@@ -293,7 +294,7 @@ export default function Studio() {
                 onScroll={(e) => { if (gutterRef.current) gutterRef.current.scrollTop = e.target.scrollTop; }} />
             </div>
             <div className="pane-foot">
-              <button type="button" className="mini" onClick={() => loadCode(DEFAULT_HTML, DEFAULT_NAME, { bg: "code" })}>Default</button>
+              <button type="button" className="mini" onClick={() => loadCode(DEFAULT_CODE, DEFAULT_NAME, { bg: "code" })}>Default</button>
               {code && <button type="button" className="mini" onClick={saveHtml}>Simpan</button>}
               {code && <button type="button" className="mini" onClick={() => { setCode(""); setName(""); setErrors([]); }}>Kosongkan</button>}
               <span className="mono muted foot-r"><i className={errors.length ? "dot err" : "dot"} />Ln {caret[0]}, Col {caret[1]} · {fmtSize(new Blob([code]).size)}</span>
@@ -314,7 +315,7 @@ export default function Studio() {
         </aside>
 
         <main className="pane pane-center">
-          <Preview code={code} runKey={runKey} vw={vw} vh={vh} ow={ow} oh={oh} fps={fps} duration={duration} bg={bg} color={color} loop={loop} follows={follows}
+          <Preview code={html} runKey={runKey} vw={vw} vh={vh} ow={ow} oh={oh} fps={fps} duration={duration} bg={bg} color={color} loop={loop} follows={follows}
             onErrors={setErrors} onDocSize={setDocSize} />
           {(errors.length > 0 || sizeMismatch) && <div className="stage-notes">
             {errors.map((m, i) => <div key={i} className="notice err">Error: {m}</div>)}
@@ -377,8 +378,8 @@ export default function Studio() {
   );
 }
 
-// An AI reply pasted as-is: keep only the HTML document (drops chat text and ``` fences around it).
+// An AI reply pasted as-is: a full HTML document keeps only the document (drops chat text around it), a script loses its ``` fence.
 function cleanReply(t) {
   const a = t.search(/<!DOCTYPE html|<html/i), b = t.toLowerCase().lastIndexOf("</html>");
-  return a >= 0 ? t.slice(a, b > a ? b + 7 : undefined) : t.replace(/^```html?\s*|```\s*$/g, "");
+  return a >= 0 ? t.slice(a, b > a ? b + 7 : undefined) : stripFence(t);
 }
