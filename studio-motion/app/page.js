@@ -189,8 +189,6 @@ export default function Home() {
               title="Hubungkan data riset dan AI" aria-label="Koneksi">
               <Icon d={KEY_ICON} /><span className="lbl">Koneksi</span><span className="dot" aria-hidden="true" />
             </button>
-            <button type="button" className="logout-btn" onClick={async () => { await fetch("/api/logout", { method: "POST" }).catch(() => {}); window.location.href = "/login"; }}
-              title="Keluar dari StockScope" aria-label="Keluar">Keluar</button>
           </div>
         </div>
       </header>
