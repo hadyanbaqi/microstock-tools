@@ -194,8 +194,6 @@ export default function Studio() {
   const [err, setErr] = useState("");
   const [caret, setCaret] = useState([1, 1]);
   const [idea, setIdea] = useState("");
-  const [ref, setRef] = useState(null), [refMsg, setRefMsg] = useState("");
-  const refInput = useRef(null);
   const renderRef = useRef(null), abortRef = useRef(null), fileRef = useRef(null), taRef = useRef(null), gutterRef = useRef(null), tabFree = useRef(false);
 
   const [ow, oh] = sizeKey === "custom" ? [cw, ch] : sizeKey.split("x").map(Number);
@@ -226,24 +224,7 @@ export default function Studio() {
 
   const aspect = ow === oh ? "1:1" : ow > oh ? "16:9" : "9:16";
   const background = alpha ? "alpha" : bg === "solid" ? color : "code";
-  const prompt = useMemo(() => htmlPrompt({ idea: idea.trim() || "(TULIS MOTION YANG KAMU MAU DI SINI)", aspect, duration, background, reference: !!ref }), [idea, aspect, duration, background, ref]);
-
-  function pickRef(file) {
-    if (!file || !file.type.startsWith("image/")) return;
-    setRef((r) => { if (r) URL.revokeObjectURL(r.url); return { file, url: URL.createObjectURL(file) }; }); setRefMsg("");
-  }
-  function clearRef() { setRef((r) => { if (r) URL.revokeObjectURL(r.url); return null; }); setRefMsg(""); }
-  // The AI sites take the image from the clipboard (Ctrl+V in the chat), so it is copied as a PNG of at most 1600 px.
-  async function copyRef() {
-    try {
-      const bmp = await createImageBitmap(ref.file), k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
-      const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
-      c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
-      const blob = await new Promise((r) => c.toBlob(r, "image/png"));
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-      setRefMsg("Tersalin: tempel (Ctrl/Cmd+V) di chat");
-    } catch { setRefMsg("Gagal menyalin: lampirkan gambar manual di chat"); }
-  }
+  const prompt = useMemo(() => htmlPrompt({ idea: idea.trim() || "(TULIS MOTION YANG KAMU MAU DI SINI)", aspect, duration, background }), [idea, aspect, duration, background]);
 
   async function render() {
     if (!code.trim()) { setErr("Belum ada kode HTML. Tempel kode, import file, atau buat dari Prompt template."); setTab("code"); return; }
@@ -322,16 +303,6 @@ export default function Studio() {
           {tab === "template" && <div className="tpl">
             <label className="mparam"><span>Motion yang mau dibuat</span>
               <textarea rows={3} value={idea} onChange={(e) => setIdea(e.target.value)} placeholder="mis. gelembung sabun transparan naik pelan, cahaya lembut" /></label>
-            <div className="ref">
-              <input ref={refInput} type="file" accept="image/*" hidden onChange={(e) => { pickRef(e.target.files[0]); e.target.value = ""; }} />
-              {ref ? <>
-                <img src={ref.url} alt="Gambar referensi" />
-                <div className="ref-side">
-                  <div className="btns"><button type="button" className="mini" onClick={copyRef}>Salin gambar</button><button type="button" className="mini" onClick={() => refInput.current?.click()}>Ganti</button><button type="button" className="mini" onClick={clearRef}>Hapus</button></div>
-                  <span className="mono muted">{refMsg || "Prompt memuat instruksi referensi"}</span>
-                </div>
-              </> : <button type="button" className="mini" onClick={() => refInput.current?.click()}>+ Gambar referensi</button>}
-            </div>
             <div className="btns">
               <CopyButton className="primary" label="Salin prompt" text={prompt} />
               {AI_SITES.map(([l, url]) => <button key={l} type="button" onClick={() => { navigator.clipboard?.writeText(prompt).catch(() => {}); window.open(url, "_blank", "noopener"); }}>{l} ↗</button>)}

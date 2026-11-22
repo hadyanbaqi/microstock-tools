@@ -326,7 +326,7 @@ function starterHtml(aspect, duration) {
 
 // Prompt the owner can paste into any AI (or Claude uses through MCP) so the HTML renders exactly, loops, and follows the
 // Studio settings (size, duration, background) instead of hard-coding them.
-export function htmlPrompt({ idea = "", aspect = "16:9", duration = 10, background = "code", reference = false } = {}) {
+export function htmlPrompt({ idea = "", aspect = "16:9", duration = 10, background = "code" } = {}) {
   return `You are a world-class Creative Coder & Motion Graphics Engineer.
 Create one single-file, production-ready HTML animation for stock video (Adobe Stock / Shutterstock), rendered frame by frame in Studio Motion.
 
@@ -338,7 +338,7 @@ ${htmlRules(aspect, duration, background)}
 SPECIFICATIONS:
 - Default ratio: ${aspect}
 - Default loop length: ${duration} seconds
-- Subject: ${idea || "choose a concept that sells well as stock footage"}${reference ? "\n- Reference image: attached to this message. Study it and recreate its subject, composition, colour palette and mood as the animation, drawn with canvas/SVG code (never embed or load the image itself). Do not copy any logo, brand name or text from it." : ""}
+- Subject: ${idea || "choose a concept that sells well as stock footage"}
 
 =========================================
 FOLLOW THIS STRUCTURE (rename, extend, and remove whatever does not suit the idea):
