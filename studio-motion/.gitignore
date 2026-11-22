@@ -2,3 +2,5 @@ node_modules
 .next
 .cache
 .env.local
+public/ffmpeg/ffmpeg-core.js
+public/ffmpeg/ffmpeg-core.wasm
