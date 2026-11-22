@@ -1,6 +1,7 @@
 "use client";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MAX_HTML, followsStudio, htmlPrompt, SAMPLE_HTML, viewportFor } from "@/lib/htmlMotion.mjs";
+import { DEFAULT_HTML, DEFAULT_NAME } from "@/lib/defaultMotion.mjs";
 import { canPickFolder, canSaveAs, loadFrame, renderHtml, fileBase, saveAs, writeFile } from "./htmlRender";
 import { CopyButton } from "./ui";
 
@@ -14,15 +15,13 @@ const BITRATES = [[16, "16"], [40, "40"], [100, "100"]];
 const QUICK_COLORS = [["#00FF00", "Green screen"], ["#000000", "Hitam"], ["#FFFFFF", "Putih"], ["#0F172A", "Navy"]];
 const FORMATS = [["mp4", "MP4 · H.264"], ["mov", "MOV · ProRes 4444"]];
 const WARN = { smil: "Ada animasi SVG SMIL (<animate>): tidak ikut terekam. Ganti dengan CSS @keyframes atau JavaScript." };
-const IDEAS = ["Partikel emas berkilau", "Gradien aurora halus", "Grid retro synthwave", "Gelembung sabun transparan", "Hujan neon kota malam", "Gelombang garis minimalis"];
 const AI_SITES = [["ChatGPT", "https://chatgpt.com/"], ["Gemini", "https://gemini.google.com/app"], ["Claude", "https://claude.ai/new"]];
 
 function Logo() {
   return (
-    <svg width="26" height="26" viewBox="0 0 28 28" aria-hidden="true">
-      <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ff9a5c" /><stop offset="1" stopColor="#ff6a2b" /></linearGradient></defs>
-      <rect width="28" height="28" rx="8" fill="url(#lg)" />
-      <path d="M11 8.8v10.4a.8.8 0 0 0 1.2.7l8.2-5.2a.8.8 0 0 0 0-1.4l-8.2-5.2a.8.8 0 0 0-1.2.7Z" fill="#160a04" />
+    <svg width="26" height="26" viewBox="0 0 64 64" aria-hidden="true">
+      <rect width="64" height="64" rx="16" fill="#141415" />
+      <g transform="translate(6.4 6.4) scale(0.8)"><path d="M24 8 H52 V30 H24 A11 11 0 0 1 24 8 Z" fill="#ff6a2b" /><path d="M12 34 H40 A11 11 0 0 1 40 56 H12 Z" fill="#ffa36b" /></g>
     </svg>
   );
 }
@@ -105,7 +104,7 @@ const Preview = memo(function Preview({ code, runKey, vw, vh, ow, oh, fps, durat
             style={{ width: vw, height: vh, transform: `scale(${scale})`, visibility: code.trim() ? "visible" : "hidden" }} />
           {grid && <div className="ms-grid" aria-hidden="true"><i /><span /></div>}
         </div>
-        {!code.trim() && <div className="cve-empty"><b>Belum ada animasi</b><span>Tempel kode, import .html, atau pakai Contoh</span></div>}
+        {!code.trim() && <div className="cve-empty"><b>Belum ada animasi</b><span>Tempel kode atau import .html</span></div>}
       </div>
       <div className="ms-transport">
         <button type="button" className="primary round" disabled={!code.trim()} onClick={() => setPlaying((p) => !p)} aria-label={playing ? "Pause" : "Play"}>{playing ? "❚❚" : "▶"}</button>
@@ -170,8 +169,8 @@ function RenderDialog({ busy, files, error, warns, loopRes, info, onCancel, onCl
 }
 
 export default function Studio() {
-  const [code, setCode] = useState("");
-  const [name, setName] = useState("");
+  const [code, setCode] = useState(DEFAULT_HTML);
+  const [name, setName] = useState(DEFAULT_NAME);
   const [tab, setTab] = useState("code");
   const [sizeKey, setSizeKey] = useState("1920x1080");
   const [cw, setCw] = useState(1920), [ch, setCh] = useState(1080);
@@ -194,8 +193,9 @@ export default function Studio() {
   const [renderErr, setRenderErr] = useState("");
   const [err, setErr] = useState("");
   const [caret, setCaret] = useState([1, 1]);
-  // Prompt template
-  const [idea, setIdea] = useState(""), [style, setStyle] = useState(""), [colors, setColors] = useState(""), [text, setText] = useState("");
+  const [idea, setIdea] = useState("");
+  const [ref, setRef] = useState(null), [refMsg, setRefMsg] = useState("");
+  const refInput = useRef(null);
   const renderRef = useRef(null), abortRef = useRef(null), fileRef = useRef(null), taRef = useRef(null), gutterRef = useRef(null), tabFree = useRef(false);
 
   const [ow, oh] = sizeKey === "custom" ? [cw, ch] : sizeKey.split("x").map(Number);
@@ -226,9 +226,24 @@ export default function Studio() {
 
   const aspect = ow === oh ? "1:1" : ow > oh ? "16:9" : "9:16";
   const background = alpha ? "alpha" : bg === "solid" ? color : "code";
-  const subject = [idea.trim(), style.trim() && `Gaya/suasana: ${style.trim()}`, colors.trim() && `Palet warna: ${colors.trim()}`, text.trim() && `Teks di dalam animasi: "${text.trim()}"`].filter(Boolean).join(". ");
-  const prompt = useMemo(() => htmlPrompt({ idea: subject, aspect, duration, background }), [subject, aspect, duration, background]);
-  const [promptOpen, setPromptOpen] = useState(false);
+  const prompt = useMemo(() => htmlPrompt({ idea: idea.trim() || "(TULIS MOTION YANG KAMU MAU DI SINI)", aspect, duration, background, reference: !!ref }), [idea, aspect, duration, background, ref]);
+
+  function pickRef(file) {
+    if (!file || !file.type.startsWith("image/")) return;
+    setRef((r) => { if (r) URL.revokeObjectURL(r.url); return { file, url: URL.createObjectURL(file) }; }); setRefMsg("");
+  }
+  function clearRef() { setRef((r) => { if (r) URL.revokeObjectURL(r.url); return null; }); setRefMsg(""); }
+  // The AI sites take the image from the clipboard (Ctrl+V in the chat), so it is copied as a PNG of at most 1600 px.
+  async function copyRef() {
+    try {
+      const bmp = await createImageBitmap(ref.file), k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+      c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+      const blob = await new Promise((r) => c.toBlob(r, "image/png"));
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      setRefMsg("Tersalin: tempel (Ctrl/Cmd+V) di chat");
+    } catch { setRefMsg("Gagal menyalin: lampirkan gambar manual di chat"); }
+  }
 
   async function render() {
     if (!code.trim()) { setErr("Belum ada kode HTML. Tempel kode, import file, atau buat dari Prompt template."); setTab("code"); return; }
@@ -297,7 +312,8 @@ export default function Studio() {
                 onScroll={(e) => { if (gutterRef.current) gutterRef.current.scrollTop = e.target.scrollTop; }} />
             </div>
             <div className="pane-foot">
-              <button type="button" className="mini" onClick={() => loadCode(SAMPLE_HTML, "retro-sunset-grid", { bg: "code" })}>Contoh</button>
+              <button type="button" className="mini" onClick={() => loadCode(DEFAULT_HTML, DEFAULT_NAME, { bg: "code" })}>StockSells</button>
+              <button type="button" className="mini" onClick={() => loadCode(SAMPLE_HTML, "retro-sunset-grid", { bg: "code" })}>Retro</button>
               {code && <button type="button" className="mini" onClick={saveHtml}>Simpan</button>}
               {code && <button type="button" className="mini" onClick={() => { setCode(""); setName(""); setErrors([]); }}>Kosongkan</button>}
               <span className="mono muted foot-r"><i className={errors.length ? "dot err" : "dot"} />Ln {caret[0]}, Col {caret[1]} · {fmtSize(new Blob([code]).size)}</span>
@@ -306,23 +322,23 @@ export default function Studio() {
 
           {tab === "template" && <div className="tpl">
             <label className="mparam"><span>Motion yang mau dibuat</span>
-              <textarea rows={4} value={idea} onChange={(e) => setIdea(e.target.value)} placeholder="mis. partikel emas berkilau melayang pelan di latar hitam" /></label>
-            <div className="chips" role="group" aria-label="Contoh ide">{IDEAS.map((x) => <button key={x} type="button" className="mini" onClick={() => setIdea(x)}>{x}</button>)}</div>
-            <div className="two">
-              <label className="mparam"><span>Gaya</span><input value={style} onChange={(e) => setStyle(e.target.value)} placeholder="minimalis, mewah…" /></label>
-              <label className="mparam"><span>Warna</span><input value={colors} onChange={(e) => setColors(e.target.value)} placeholder="emas, hitam…" /></label>
+              <textarea rows={3} value={idea} onChange={(e) => setIdea(e.target.value)} placeholder="mis. gelembung sabun transparan naik pelan, cahaya lembut" /></label>
+            <div className="ref">
+              <input ref={refInput} type="file" accept="image/*" hidden onChange={(e) => { pickRef(e.target.files[0]); e.target.value = ""; }} />
+              {ref ? <>
+                <img src={ref.url} alt="Gambar referensi" />
+                <div className="ref-side">
+                  <div className="btns"><button type="button" className="mini" onClick={copyRef}>Salin gambar</button><button type="button" className="mini" onClick={() => refInput.current?.click()}>Ganti</button><button type="button" className="mini" onClick={clearRef}>Hapus</button></div>
+                  <span className="mono muted">{refMsg || "Prompt memuat instruksi referensi"}</span>
+                </div>
+              </> : <button type="button" className="mini" onClick={() => refInput.current?.click()}>+ Gambar referensi</button>}
             </div>
-            <label className="mparam"><span>Teks di animasi</span><input value={text} onChange={(e) => setText(e.target.value)} placeholder="kosong = tanpa teks" /></label>
-            <div className="tpl-meta mono">{aspect} · {duration} dtk · {alpha ? "transparan" : bg === "solid" ? color : "latar bebas"}</div>
             <div className="btns">
               <CopyButton className="primary" label="Salin prompt" text={prompt} />
               {AI_SITES.map(([l, url]) => <button key={l} type="button" onClick={() => { navigator.clipboard?.writeText(prompt).catch(() => {}); window.open(url, "_blank", "noopener"); }}>{l} ↗</button>)}
             </div>
-            <div className="btns">
-              <button type="button" className="linkish" onClick={() => setPromptOpen((o) => !o)}>{promptOpen ? "Sembunyikan prompt" : "Lihat prompt"}</button>
-              <button type="button" className="linkish" onClick={() => setTab("code")}>Tempel hasil di Kode →</button>
-            </div>
-            {promptOpen && <textarea className="ms-promptview mono" readOnly rows={12} value={prompt} aria-label="Prompt lengkap" onFocus={(e) => e.target.select()} />}
+            <textarea className="ms-promptview mono" readOnly value={prompt} aria-label="Prompt" onFocus={(e) => e.target.select()} />
+            <div className="tpl-meta mono">{aspect} · {duration} dtk · {alpha ? "transparan" : bg === "solid" ? color : "latar bebas"} <button type="button" className="linkish" onClick={() => setTab("code")}>Tempel hasil di Kode →</button></div>
           </div>}
           {err && <div className="notice err">{err}</div>}
         </aside>

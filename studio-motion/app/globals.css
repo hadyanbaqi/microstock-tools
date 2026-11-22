@@ -188,3 +188,11 @@ a.mini.primary { background: linear-gradient(135deg, var(--accent-2), var(--acce
 .tpl .btns button.linkish { padding: 0; }
 .tpl .btns:last-of-type { flex-wrap: wrap; gap: 14px; }
 .sum { flex-direction: column; gap: 2px; }
+.tpl { padding: 12px; gap: 10px; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
+.tpl .ms-promptview { height: 100%; resize: none; }
+.tpl-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.tpl { display: flex; flex-direction: column; }
+.tpl .ms-promptview { flex: 1; min-height: 120px; height: auto; }
+.ref { display: flex; align-items: center; gap: 10px; }
+.ref img { width: 72px; height: 54px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line-2); }
+.ref-side { display: grid; gap: 6px; min-width: 0; font-size: 11px; }
