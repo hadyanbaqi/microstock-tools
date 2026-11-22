@@ -193,3 +193,22 @@ a.mini.primary { background: linear-gradient(135deg, var(--accent-2), var(--acce
 .tpl-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .tpl { display: flex; flex-direction: column; }
 .tpl .ms-promptview { flex: 1; min-height: 120px; height: auto; }
+
+/* bulk queue */
+.q { display: flex; flex-direction: column; gap: 10px; padding: 12px; flex: 1; min-height: 0; }
+.q-drop { flex: 1; display: grid; place-content: center; gap: 4px; text-align: center; border: 1px dashed var(--line-2); border-radius: 12px; background: #0e0e10; white-space: normal; }
+.q-drop b { font-size: 14px; } .q-drop span { font-size: 12px; color: var(--gray); font-weight: 400; }
+.q-drop:hover { border-color: rgba(255, 106, 43, 0.55); }
+.q-head { display: flex; align-items: center; gap: 8px; }
+.q-head .mono { margin-right: auto; font-size: 12px; color: var(--accent); }
+.q-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; overflow: auto; flex: 1; align-content: start; }
+.q-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto 26px; align-items: center; gap: 8px; padding: 4px 6px 4px 10px; border-radius: 8px; background: #0e0e10; border: 1px solid var(--line); overflow: hidden; }
+.q-row.run::before { content: ""; position: absolute; left: 0; bottom: 0; height: 2px; width: var(--p); background: linear-gradient(90deg, var(--accent-2), var(--accent)); }
+.q-row.run { border-color: rgba(255, 106, 43, 0.5); }
+.q-row.ok .q-state { color: var(--ok); } .q-row.err .q-state { color: var(--err); }
+.q-name { background: none; border: 0; padding: 6px 0; text-align: left; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; }
+.q-state { font-size: 11px; color: var(--gray); white-space: nowrap; }
+.q-x { width: 24px; height: 24px; padding: 0; border: 0; background: none; color: var(--gray); font-size: 16px; }
+.q-x:hover { color: var(--ink); }
+.q-foot { font-size: 11px; }
+.q-state { max-width: 190px; overflow: hidden; text-overflow: ellipsis; }

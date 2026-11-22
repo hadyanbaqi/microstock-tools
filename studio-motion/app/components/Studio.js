@@ -2,7 +2,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MAX_HTML, followsStudio, scriptPrompt, stripFence, toHtml, viewportFor } from "@/lib/htmlMotion.mjs";
 import { DEFAULT_CODE, DEFAULT_NAME } from "@/lib/defaultMotion.mjs";
-import { canPickFolder, canSaveAs, loadFrame, renderHtml, fileBase, saveAs, writeFile } from "./htmlRender";
+import { canPickFolder, canSaveAs, loadFrame, renderHtml, fileBase, saveAs, saveBlob, writeFile } from "./htmlRender";
 import { CopyButton } from "./ui";
 
 // Studio Motion: one HTML/CSS/JS file in one editor, a live preview on the same virtual clock as the render
@@ -193,6 +193,9 @@ export default function Studio() {
   const [renderErr, setRenderErr] = useState("");
   const [err, setErr] = useState("");
   const [caret, setCaret] = useState([1, 1]);
+  const [queue, setQueue] = useState([]);   // bulk import: [{ id, name, code, status: "wait" | "run" | "ok" | "err", p, msg }]
+  const [bulk, setBulk] = useState(null);   // { i, total } while the queue renders
+  const bulkAbort = useRef(null);
   const [idea, setIdea] = useState("");
   const renderRef = useRef(null), abortRef = useRef(null), fileRef = useRef(null), taRef = useRef(null), gutterRef = useRef(null), tabFree = useRef(false);
 
@@ -218,7 +221,7 @@ export default function Studio() {
   function importFile(file) {
     if (!file) return;
     if (file.size > MAX_HTML) { setErr(`File terlalu besar (maks ${Math.round(MAX_HTML / 1000)} KB).`); return; }
-    const fr = new FileReader(); fr.onload = () => loadCode(String(fr.result), file.name.replace(/\.html?$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 20));
+    const fr = new FileReader(); fr.onload = () => loadCode(String(fr.result), file.name.replace(/\.[a-z0-9]+$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 20));
     fr.onerror = () => setErr("File tidak bisa dibaca."); fr.readAsText(file);
   }
   function saveHtml() { const a = document.createElement("a"), url = URL.createObjectURL(new Blob([html], { type: "text/html" })); a.href = url; a.download = `${fileBase(name)}.html`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 30000); }
@@ -226,6 +229,59 @@ export default function Studio() {
   const aspect = ow === oh ? "1:1" : ow > oh ? "16:9" : "9:16";
   const background = alpha ? "alpha" : bg === "solid" ? color : "code";
   const prompt = useMemo(() => scriptPrompt({ idea: idea.trim() || "(TULIS MOTION YANG KAMU MAU DI SINI)", aspect, duration, background }), [idea, aspect, duration, background]);
+
+  // ---------- bulk import: many source files → queue → render all with the current settings ----------
+  async function importMany(list) {
+    const files = [...list].filter((f) => /\.(html?|m?js|txt)$/i.test(f.name) || f.type === "text/html");
+    if (!files.length) { setErr("Tidak ada file .html / .js / .txt."); return; }
+    const taken = new Set(queue.map((q) => q.name)), add = [], skipped = [];
+    for (const f of files) {
+      if (f.size > MAX_HTML) { skipped.push(f.name); continue; }
+      const code = (await f.text()).replace(/^\uFEFF/, "");
+      if (!code.trim()) continue;
+      let base = f.name.replace(/\.[a-z0-9]+$/i, "").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 20) || "motion", nm = base, k = 2;
+      while (taken.has(nm)) nm = `${base.slice(0, 17)}-${k++}`;
+      taken.add(nm); add.push({ id: `${Date.now()}-${add.length}-${Math.random().toString(36).slice(2, 6)}`, name: nm, code, status: "wait", p: 0, msg: "" });
+    }
+    if (add.length) { setQueue((q) => [...q, ...add]); setTab("queue"); setErr(""); }
+    if (skipped.length) setErr(`Terlalu besar (maks ${Math.round(MAX_HTML / 1000)} KB): ${skipped.join(", ")}`);
+  }
+  function openItem(it) { setCode(it.code); setName(it.name); run(); }
+  async function renderQueue() {
+    if (busy !== null || !queue.length) return;
+    let dir = null;
+    if (canPickFolder()) {
+      try { dir = await window.showDirectoryPicker({ id: "studio-motion-render", mode: "readwrite", startIn: "downloads" }); }
+      catch (e) { if (e?.name === "AbortError") return; }
+    }
+    const ac = new AbortController(); bulkAbort.current = ac;
+    const items = queue.map((q) => ({ ...q })), set = (id, patch) => setQueue((q) => q.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    setQueue((q) => q.map((x) => ({ ...x, status: "wait", p: 0, msg: "" })));
+    for (let i = 0; i < items.length && !ac.signal.aborted; i++) {
+      const it = items[i]; setBulk({ i: i + 1, total: items.length }); set(it.id, { status: "run", p: 0 });
+      // A script error inside the page (syntax error, missing render()) fails this item at once instead of recording blank frames.
+      const item = new AbortController(), onAbort = () => item.abort(), codeErrs = [];
+      ac.signal.addEventListener("abort", onAbort);
+      const onErr = (e) => { if (e.source === renderRef.current?.contentWindow && e.data?.cveError) { codeErrs.push(String(e.data.cveError)); item.abort(); } };
+      window.addEventListener("message", onErr);
+      try {
+        const h = toHtml(it.code);
+        if (h.length > MAX_HTML) throw new Error("Kode terlalu besar");
+        const out = await renderHtml({ html: h, frame: renderRef.current, size: { vw, vh, ow, oh }, bg: background, fps, duration, mbps, format, signal: item.signal,
+          onProgress: (b) => { setBusy(b); set(it.id, { p: b.p || 0 }); } });
+        if (codeErrs.length) throw new Error(codeErrs[0]);
+        const list = [{ name: `${it.name}.${out.ext}`, blob: out.video }];
+        if (out.matte) list.push({ name: `${it.name}-matte.${out.ext}`, blob: out.matte });
+        if (out.poster) list.push({ name: `${it.name}-poster.jpg`, blob: out.poster });
+        for (const f of list) { if (dir) await writeFile(dir, f.blob, f.name); else { saveBlob(f.blob, f.name); await new Promise((r) => setTimeout(r, 350)); } }
+        set(it.id, { status: "ok", p: 1, msg: fmtSize(out.video.size) + (out.loop && !out.loop.ok ? " · loop patah" : "") });
+      } catch (e) {
+        if (ac.signal.aborted) { set(it.id, { status: "wait", p: 0, msg: "dibatalkan" }); break; }
+        set(it.id, { status: "err", msg: codeErrs[0] || e.message || "gagal" });
+      } finally { window.removeEventListener("message", onErr); ac.signal.removeEventListener("abort", onAbort); }
+    }
+    setBusy(null); setBulk(null); bulkAbort.current = null;
+  }
 
   async function render() {
     if (!code.trim()) { setErr("Belum ada kode HTML. Tempel kode, import file, atau buat dari Prompt template."); setTab("code"); return; }
@@ -263,17 +319,17 @@ export default function Studio() {
         <span className="brand" aria-label="Studio Motion"><Logo /><span className="brand-word">Studio<span>Motion</span></span></span>
         <input className="bar-name mono" value={name} onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 20))} maxLength={20} placeholder="nama-file" aria-label="Nama file" />
         <div className="bar-actions">
-          <input ref={fileRef} type="file" accept=".html,.htm,text/html" hidden onChange={(e) => { importFile(e.target.files[0]); e.target.value = ""; }} />
-          <button type="button" onClick={() => fileRef.current?.click()}>Import .html</button>
+          <input ref={fileRef} type="file" multiple accept=".html,.htm,.js,.mjs,.txt,text/html" hidden onChange={(e) => { const fl = [...e.target.files]; if (fl.length > 1) importMany(fl); else importFile(fl[0]); e.target.value = ""; }} />
+          <button type="button" onClick={() => fileRef.current?.click()}>Import</button>
           <button type="button" onClick={paste}>Tempel</button>
           <button type="button" className="primary" disabled={busy !== null} onClick={render}>{busy !== null ? `Render ${Math.round((busy.p || 0) * 100)}%` : `Render ${mov ? "MOV" : "MP4"}`}</button>
         </div>
       </header>
 
       <div className="app-body">
-        <aside className="pane pane-left">
+        <aside className="pane pane-left" onDragOver={(e) => { if (e.dataTransfer?.types?.includes("Files")) e.preventDefault(); }} onDrop={(e) => { if (e.dataTransfer?.files?.length) { e.preventDefault(); importMany(e.dataTransfer.files); } }}>
           <div className="pane-head">
-            <div className="seg" role="tablist" aria-label="Editor">{tabBtn("code", "Kode")}{tabBtn("template", "Prompt")}</div>
+            <div className="seg" role="tablist" aria-label="Editor">{tabBtn("code", "Kode")}{tabBtn("queue", queue.length ? `Antrean ${queue.length}` : "Antrean")}{tabBtn("template", "Prompt")}</div>
             {tab === "code" && <>
               <label className="mcheck"><input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> Auto</label>
               <button type="button" className="mini" disabled={!code.trim()} onClick={run} title="Ctrl/Cmd + Enter">↻ Jalankan</button>
@@ -301,6 +357,29 @@ export default function Studio() {
             </div>
           </>}
 
+          {tab === "queue" && <div className="q">
+            {queue.length === 0
+              ? <button type="button" className="q-drop" onClick={() => fileRef.current?.click()}><b>Import banyak file</b><span>Pilih atau seret beberapa file .html / .js</span></button>
+              : <>
+                <div className="q-head">
+                  {bulk
+                    ? <><span className="mono">Merender {bulk.i}/{bulk.total}</span><button type="button" className="mini" onClick={() => bulkAbort.current?.abort()}>Batalkan</button></>
+                    : <><button type="button" className="primary" disabled={busy !== null} onClick={renderQueue}>Render semua ({queue.length})</button>
+                      <button type="button" className="mini" onClick={() => fileRef.current?.click()}>+ Tambah</button>
+                      <button type="button" className="mini" disabled={busy !== null} onClick={() => setQueue([])}>Kosongkan</button></>}
+                </div>
+                <ul className="q-list">
+                  {queue.map((it) => (
+                    <li key={it.id} className={`q-row ${it.status}`} style={{ "--p": `${Math.round((it.p || 0) * 100)}%` }}>
+                      <button type="button" className="q-name mono" onClick={() => openItem(it)} title="Buka di pratinjau">{it.name}</button>
+                      <span className="q-state mono">{it.status === "run" ? `${Math.round((it.p || 0) * 100)}%` : it.status === "ok" ? `✓ ${it.msg}` : it.status === "err" ? `✗ ${it.msg}` : it.msg || "menunggu"}</span>
+                      <button type="button" className="q-x" aria-label={`Hapus ${it.name}`} disabled={bulk !== null} onClick={() => setQueue((q) => q.filter((x) => x.id !== it.id))}>×</button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="q-foot mono muted">{ow}×{oh} · {fps} FPS · {duration} dtk · {sumFormat}</div>
+              </>}
+          </div>}
           {tab === "template" && <div className="tpl">
             <label className="mparam"><span>Motion yang mau dibuat</span>
               <textarea rows={3} value={idea} onChange={(e) => setIdea(e.target.value)} placeholder="mis. gelembung sabun transparan naik pelan, cahaya lembut" /></label>
